@@ -77,6 +77,7 @@ interface Supplement {
 interface SupplementLog {
   id: string;
   supplement_id: string;
+  supplement_name: string;
   date: string;
   taken: boolean;
   taken_at: string;
@@ -91,7 +92,7 @@ export default function Dashboard() {
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [exerciseLogs, setExerciseLogs] = useState<ExerciseLog[]>([]);
   const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
-  const [measurementUnit, setMeasurementUnit] = useState<'cm' | 'in'>('cm');
+  const [measurementUnit] = useState<'cm' | 'in'>('cm');
 
   const [newMeasurement, setNewMeasurement] = useState<Partial<Measurement>>({
     date: new Date().toISOString().split('T')[0],
