@@ -85,7 +85,7 @@ interface SupplementLog {
 
 export default function Dashboard() {
   // Previous state declarations remain the same
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -1295,17 +1295,34 @@ export default function Dashboard() {
                 <h3 className="text-lg leading-6 font-medium text-gray-900">Profile Information</h3>
                 <p className="mt-1 max-w-2xl text-sm text-gray-500">Personal details and recovery information.</p>
               </div>
-              {!editingProfile && (
-                <button
-                  onClick={() => {
-                    setEditedProfile(profile);
-                    setEditingProfile(true);
-                  }}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  Edit Profile
-                </button>
-              )}
+              <div className="space-x-3">
+                {!editingProfile && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setEditedProfile(profile);
+                        setEditingProfile(true);
+                      }}
+                      className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                      Edit Profile
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await signOut();
+                          navigate('/login');
+                        } catch (error) {
+                          console.error('Error signing out:', error);
+                        }
+                      }}
+                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                    >
+                      Sign Out
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
             {editingProfile && editedProfile ? (
               <form onSubmit={handleUpdateProfile} className="border-t border-gray-200">
