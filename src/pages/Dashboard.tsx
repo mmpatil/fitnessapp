@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Activity, Weight, Ruler, Calendar, SmilePlus, Smile, Meh, Frown, AlertCircle, Battery, BatteryWarning, BatteryLow, BatteryMedium, BatteryFull } from 'lucide-react';
+import { Activity, Weight, Ruler, Calendar, Smile, Meh, Frown, Battery, BatteryLow, BatteryMedium, BatteryFull, SmilePlus, Droplet } from 'lucide-react';
 import { format } from 'date-fns';
 import { convertWeight, formatWeight, convertLength, formatLength } from '../lib/units';
 import {
@@ -93,6 +93,14 @@ interface MoodLog {
   gratitude_notes: string;
 }
 
+interface HydrationLog {
+  id?: string;
+  user_id?: string;
+  date?: string;
+  water_intake_ml: number;
+  target_amount: number;
+}
+
 export default function Dashboard() {
   // Previous state declarations remain the same
   const { user, signOut } = useAuth();
@@ -122,7 +130,7 @@ export default function Dashboard() {
     frequency: 'daily',
     time_of_day: 'morning'
   });
-  const [activeTab, setActiveTab] = useState<'measurements' | 'progress' | 'exercises' | 'profile' | 'supplements' | 'mood'>('measurements');
+  const [activeTab, setActiveTab] = useState<'measurements' | 'progress' | 'exercises' | 'profile' | 'supplements' | 'mood' | 'hydration'>('measurements');
 
   // Add new state for mood tracking
   const [moodRating, setMoodRating] = useState(3);
@@ -135,6 +143,10 @@ export default function Dashboard() {
   const [moodLogs, setMoodLogs] = useState<MoodLog[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const logsPerPage = 5;
+  const [hydrationLog, setHydrationLog] = useState<HydrationLog>({
+    water_intake_ml: 0,
+    target_amount: 2000
+  });
 
   // Function to calculate postpartum week
   const calculatePostpartumWeek = (deliveryDate: string): number => {
@@ -280,6 +292,42 @@ export default function Dashboard() {
     return suggestions;
   };
 
+  // Move fetchHydrationLog before it's used in useEffect or loadData
+  const fetchHydrationLog = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('hydration_logs')
+        .select('*')
+        .eq('user_id', user?.id)
+        .eq('date', today)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+        throw error;
+      }
+
+      if (data) {
+        setHydrationLog(data);
+      } else {
+        // Initialize with default values if no log exists
+        setHydrationLog({
+          water_intake_ml: 0,
+          target_amount: 2000
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching hydration log:', err);
+    }
+  };
+
+  // Now the function exists when used in useEffect
+  useEffect(() => {
+    if (activeTab === 'hydration') {
+      fetchHydrationLog();
+    }
+  }, [activeTab]);
+
   // Previous useEffect and handlers remain the same
   useEffect(() => {
     async function loadData() {
@@ -288,6 +336,7 @@ export default function Dashboard() {
           navigate('/login');
           return;
         }
+        const today = new Date().toISOString().split('T')[0];
 
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
@@ -555,6 +604,34 @@ export default function Dashboard() {
     }
   };
 
+  const updateHydration = async (amount: number) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const newAmount = Math.max(0, hydrationLog.water_intake_ml + amount);
+      
+      const { data, error } = await supabase
+        .from('hydration_logs')
+        .upsert({
+          user_id: user?.id,
+          date: today,
+          water_intake_ml: newAmount
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      if (data) {
+        setHydrationLog({
+          ...data,
+          target_amount: hydrationLog.target_amount
+        });
+      }
+    } catch (err) {
+      console.error('Error updating hydration:', err);
+    }
+  };
+
   // Chart data configuration remains the same
   const chartData = {
     labels: [...measurements].reverse().map(m => format(new Date(m.date), 'MMM d')),
@@ -687,17 +764,17 @@ export default function Dashboard() {
   const getMoodIcon = (rating: number) => {
     switch (rating) {
       case 1:
-        return <AlertCircle className="w-6 h-6" />; // Changed to AlertCircle for very unhappy
+        return <Frown className="w-6 h-6 text-red-500" />;
       case 2:
-        return <Frown className="w-6 h-6" />;
+        return <Meh className="w-6 h-6 text-orange-500" />;
       case 3:
-        return <Meh className="w-6 h-6" />;
+        return <Meh className="w-6 h-6 text-yellow-500" />;
       case 4:
-        return <Smile className="w-6 h-6" />;
+        return <Smile className="w-6 h-6 text-lime-500" />;
       case 5:
-        return <SmilePlus className="w-6 h-6" />;
+        return <SmilePlus className="w-6 h-6 text-green-500" />;
       default:
-        return <Meh className="w-6 h-6" />;
+        return <Meh className="w-6 h-6 text-gray-400" />;
     }
   };
 
@@ -721,17 +798,17 @@ export default function Dashboard() {
   const getEnergyIcon = (level: number) => {
     switch (level) {
       case 1:
-        return <Battery className="w-6 h-6" />;
+        return <Battery className="w-6 h-6 text-red-500" />;
       case 2:
-        return <BatteryWarning className="w-6 h-6" />;
+        return <BatteryLow className="w-6 h-6 text-orange-500" />;
       case 3:
-        return <BatteryLow className="w-6 h-6" />;
+        return <BatteryMedium className="w-6 h-6 text-yellow-500" />;
       case 4:
-        return <BatteryMedium className="w-6 h-6" />;
+        return <BatteryFull className="w-6 h-6 text-lime-500" />;
       case 5:
-        return <BatteryFull className="w-6 h-6" />;
+        return <BatteryFull className="w-6 h-6 text-green-500" />;
       default:
-        return <Battery className="w-6 h-6" />;
+        return <Battery className="w-6 h-6 text-gray-400" />;
     }
   };
 
@@ -852,6 +929,16 @@ export default function Dashboard() {
               } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
             >
               Mood
+            </button>
+            <button
+              onClick={() => setActiveTab('hydration')}
+              className={`inline-flex items-center px-4 py-2 border text-sm font-medium rounded-md ${
+                activeTab === 'hydration'
+                  ? 'border-transparent text-white bg-indigo-600 hover:bg-indigo-700'
+                  : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
+            >
+              Hydration
             </button>
             <button
               onClick={() => setActiveTab('profile')}
@@ -1116,147 +1203,147 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="bg-white shadow sm:rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <h3 className="text-lg leading-6 font-medium text-gray-900">Exercise Log</h3>
-                <div className="mt-4 border-t border-gray-200">
-                  <form onSubmit={handleAddExercise} className="space-y-6 divide-y divide-gray-200">
-                    <div className="pt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div className="sm:col-span-2">
-                        <label htmlFor="exercise-date" className="block text-sm font-medium text-gray-700">
-                          Date
-                        </label>
-                        <div className="mt-1">
-                          <input
-                            type="date"
-                            id="exercise-date"
-                            value={newExercise.date}
-                            onChange={(e) => setNewExercise({ ...newExercise, date: e.target.value })}
-                            className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                          />
+              <div className="bg-white shadow sm:rounded-lg">
+                <div className="px-4 py-5 sm:p-6">
+                  <h3 className="text-lg leading-6 font-medium text-gray-900">Exercise Log</h3>
+                  <div className="mt-4 border-t border-gray-200">
+                    <form onSubmit={handleAddExercise} className="space-y-6 divide-y divide-gray-200">
+                      <div className="pt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                        <div className="sm:col-span-2">
+                          <label htmlFor="exercise-date" className="block text-sm font-medium text-gray-700">
+                            Date
+                          </label>
+                          <div className="mt-1">
+                            <input
+                              type="date"
+                              id="exercise-date"
+                              value={newExercise.date}
+                              onChange={(e) => setNewExercise({ ...newExercise, date: e.target.value })}
+                              className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label htmlFor="exercise-type" className="block text-sm font-medium text-gray-700">
+                            Exercise Type
+                          </label>
+                          <div className="mt-1">
+                            <select
+                              id="exercise-type"
+                              value={newExercise.exercise_type}
+                              onChange={(e) => setNewExercise({ ...newExercise, exercise_type: e.target.value })}
+                              className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                            >
+                              <option value="">Select type</option>
+                              <option value="walking">Walking</option>
+                              <option value="swimming">Swimming</option>
+                              <option value="yoga">Yoga</option>
+                              <option value="stretching">Stretching</option>
+                              <option value="kegel">Kegel Exercises</option>
+                              <option value="pelvic-floor">Pelvic Floor Exercises</option>
+                              <option value="light-cardio">Light Cardio</option>
+                              <option value="other">Other</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label htmlFor="duration" className="block text-sm font-medium text-gray-700">
+                            Duration (minutes)
+                          </label>
+                          <div className="mt-1">
+                            <input
+                              type="number"
+                              id="duration"
+                              min="1"
+                              value={newExercise.duration_minutes || ''}
+                              onChange={(e) => setNewExercise({ ...newExercise, duration_minutes: parseInt(e.target.value) })}
+                              className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="sm:col-span-6">
+                          <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
+                            Notes
+                          </label>
+                          <div className="mt-1">
+                            <textarea
+                              id="notes"
+                              rows={3}
+                              value={newExercise.notes || ''}
+                              onChange={(e) => setNewExercise({ ...newExercise, notes: e.target.value })}
+                              className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                            />
+                          </div>
                         </div>
                       </div>
 
-                      <div className="sm:col-span-2">
-                        <label htmlFor="exercise-type" className="block text-sm font-medium text-gray-700">
-                          Exercise Type
-                        </label>
-                        <div className="mt-1">
-                          <select
-                            id="exercise-type"
-                            value={newExercise.exercise_type}
-                            onChange={(e) => setNewExercise({ ...newExercise, exercise_type: e.target.value })}
-                            className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                      <div className="pt-5">
+                        <div className="flex justify-end">
+                          <button
+                            type="submit"
+                            className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                           >
-                            <option value="">Select type</option>
-                            <option value="walking">Walking</option>
-                            <option value="swimming">Swimming</option>
-                            <option value="yoga">Yoga</option>
-                            <option value="stretching">Stretching</option>
-                            <option value="kegel">Kegel Exercises</option>
-                            <option value="pelvic-floor">Pelvic Floor Exercises</option>
-                            <option value="light-cardio">Light Cardio</option>
-                            <option value="other">Other</option>
-                          </select>
+                            Log Exercise
+                          </button>
                         </div>
                       </div>
+                    </form>
+                  </div>
 
-                      <div className="sm:col-span-2">
-                        <label htmlFor="duration" className="block text-sm font-medium text-gray-700">
-                          Duration (minutes)
-                        </label>
-                        <div className="mt-1">
-                          <input
-                            type="number"
-                            id="duration"
-                            min="1"
-                            value={newExercise.duration_minutes || ''}
-                            onChange={(e) => setNewExercise({ ...newExercise, duration_minutes: parseInt(e.target.value) })}
-                            className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="sm:col-span-6">
-                        <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
-                          Notes
-                        </label>
-                        <div className="mt-1">
-                          <textarea
-                            id="notes"
-                            rows={3}
-                            value={newExercise.notes || ''}
-                            onChange={(e) => setNewExercise({ ...newExercise, notes: e.target.value })}
-                            className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-5">
-                      <div className="flex justify-end">
-                        <button
-                          type="submit"
-                          className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                        >
-                          Log Exercise
-                        </button>
-                      </div>
-                    </div>
-                  </form>
-                </div>
-
-                <div className="mt-8">
-                  <h4 className="text-base font-medium text-gray-900">Recent Exercise History</h4>
-                  <div className="mt-4 flex flex-col">
-                    <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
-                      <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
-                        <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-                          <table className="min-w-full divide-y divide-gray-300">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
-                                  Date
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                                  Exercise Type
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                                  Duration
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                                  Notes
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200 bg-white">
-                              {exerciseLogs.map((log) => (
-                                <tr key={log.id}>
-                                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
-                                    {format(new Date(log.date), 'MMM d, yyyy')}
-                                  </td>
-                                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                                    {log.exercise_type.charAt(0).toUpperCase() + log.exercise_type.slice(1).replace('-', ' ')}
-                                  </td>
-                                  <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                                    {log.duration_minutes} minutes
-                                  </td>
-                                  <td className="px-3 py-4 text-sm text-gray-500">
-                                    {log.notes || '-'}
-                                  </td>
-                                </tr>
-                              ))}
-                              {exerciseLogs.length === 0 && (
+                  <div className="mt-8">
+                    <h4 className="text-base font-medium text-gray-900">Recent Exercise History</h4>
+                    <div className="mt-4 flex flex-col">
+                      <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
+                        <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
+                          <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+                            <table className="min-w-full divide-y divide-gray-300">
+                              <thead className="bg-gray-50">
                                 <tr>
-                                  <td colSpan={4} className="px-3 py-4 text-sm text-gray-500 text-center">
-                                    No exercise logs yet
-                                  </td>
+                                  <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                                    Date
+                                  </th>
+                                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                                    Exercise Type
+                                  </th>
+                                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                                    Duration
+                                  </th>
+                                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                                    Notes
+                                  </th>
                                 </tr>
-                              )}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200 bg-white">
+                                {exerciseLogs.map((log) => (
+                                  <tr key={log.id}>
+                                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+                                      {format(new Date(log.date), 'MMM d, yyyy')}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                                      {log.exercise_type.charAt(0).toUpperCase() + log.exercise_type.slice(1).replace('-', ' ')}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                                      {log.duration_minutes} minutes
+                                    </td>
+                                    <td className="px-3 py-4 text-sm text-gray-500">
+                                      {log.notes || '-'}
+                                    </td>
+                                  </tr>
+                                ))}
+                                {exerciseLogs.length === 0 && (
+                                  <tr>
+                                    <td colSpan={4} className="px-3 py-4 text-sm text-gray-500 text-center">
+                                      No exercise logs yet
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1679,6 +1766,89 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+        ) : activeTab === 'hydration' ? (
+          <div className="mt-8">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">Hydration Tracker</h2>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center">
+                  <Droplet className="w-8 h-8 text-blue-500 mr-2" />
+                  <div>
+                    <p className="text-sm text-gray-600">Daily Progress</p>
+                    <p className="text-lg font-semibold">
+                      {hydrationLog.water_intake_ml} / {hydrationLog.target_amount} ml
+                    </p>
+                  </div>
+                </div>
+                <div className="w-32 h-32 relative">
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <p className="text-2xl font-bold text-blue-500">
+                      {Math.round((hydrationLog.water_intake_ml / (hydrationLog.target_amount || 2000)) * 100) || 0}%
+                    </p>
+                  </div>
+                  <svg className="transform -rotate-90 w-32 h-32">
+                    <circle
+                      className="text-gray-200"
+                      strokeWidth="6"
+                      stroke="currentColor"
+                      fill="transparent"
+                      r="58"
+                      cx="64"
+                      cy="64"
+                    />
+                    <circle
+                      className="text-blue-500"
+                      strokeWidth="6"
+                      strokeDasharray={364}
+                      strokeDashoffset={String(364 - (((hydrationLog?.water_intake_ml || 0) / (hydrationLog?.target_amount || 2000)) * 364) || 0)}
+                      strokeLinecap="round"
+                      stroke="currentColor"
+                      fill="transparent"
+                      r="58"
+                      cx="64"
+                      cy="64"
+                    />
+                  </svg>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => updateHydration(250)}
+                    className="flex items-center justify-center px-4 py-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+                  >
+                    + 250ml
+                  </button>
+                  <button
+                    onClick={() => updateHydration(500)}
+                    className="flex items-center justify-center px-4 py-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+                  >
+                    + 500ml
+                  </button>
+                </div>
+                <button
+                  onClick={() => updateHydration(-250)}
+                  className="w-full px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
+                >
+                  Undo last entry
+                </button>
+              </div>
+
+              <div className="mt-6">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Daily Target</h3>
+                <select
+                  value={hydrationLog.target_amount}
+                  onChange={(e) => setHydrationLog(prev => ({ ...prev, target_amount: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  <option value={2000}>2000 ml (Recommended)</option>
+                  <option value={2500}>2500 ml (Active)</option>
+                  <option value={3000}>3000 ml (Breastfeeding)</option>
+                </select>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="mt-8 bg-white shadow overflow-hidden sm:rounded-lg">
             {/* Profile content remains the same */}
@@ -1752,79 +1922,37 @@ export default function Dashboard() {
                   <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                     <dt className="text-sm font-medium text-gray-500">Delivery Type</dt>
                     <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                      <select
-                        value={editedProfile.delivery_type}
-                        onChange={(e) => setEditedProfile({ ...editedProfile, delivery_type: e.target.value })}
-                        className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                      >
-                        <option value="c-section">C-Section</option>
-                        <option value="vaginal">Vaginal</option>
-                      </select>
+                      {profile.delivery_type === 'c-section' ? 'C-Section' : 'Vaginal'}
                     </dd>
                   </div>
                   <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                     <dt className="text-sm font-medium text-gray-500">Delivery Date</dt>
                     <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                      <input
-                        type="date"
-                        value={editedProfile.delivery_date}
-                        onChange={(e) => setEditedProfile({ ...editedProfile, delivery_date: e.target.value })}
-                        className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                      />
+                      {format(new Date(profile.delivery_date), 'MMMM d, yyyy')}
                     </dd>
                   </div>
                   <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                     <dt className="text-sm font-medium text-gray-500">Pre-pregnancy Weight</dt>
                     <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={editedProfile.pre_pregnancy_weight}
-                          onChange={(e) => setEditedProfile({ ...editedProfile, pre_pregnancy_weight: parseFloat(e.target.value) })}
-                          className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                        />
-                        <select
-                          value={editedProfile.weight_unit}
-                          onChange={(e) => setEditedProfile({ ...editedProfile, weight_unit: e.target.value as 'kg' | 'lbs' })}
-                          className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-24 sm:text-sm border-gray-300 rounded-md"
-                        >
-                          <option value="kg">kg</option>
-                          <option value="lbs">lbs</option>
-                        </select>
-                      </div>
+                      {formatWeight(convertWeight(profile.pre_pregnancy_weight, 'kg', weightUnit), weightUnit)}
                     </dd>
                   </div>
                 </dl>
-                <div className="px-4 py-3 bg-gray-50 text-right sm:px-6 space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingProfile(false);
-                      setEditedProfile(null);
-                    }}
-                    className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  >
-                    Save Changes
-                  </button>
-                </div>
               </form>
             ) : (
               <div className="border-t border-gray-200">
                 <dl>
                   <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                     <dt className="text-sm font-medium text-gray-500">First Name</dt>
-                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{profile.first_name}</dd>
+                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                      {profile.first_name}
+                    </dd>
                   </div>
                   <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                     <dt className="text-sm font-medium text-gray-500">Last Name</dt>
-                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{profile.last_name}</dd>
+                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                      {profile.last_name}
+                    </dd>
                   </div>
                   <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                     <dt className="text-sm font-medium text-gray-500">Delivery Type</dt>
@@ -1842,12 +1970,6 @@ export default function Dashboard() {
                     <dt className="text-sm font-medium text-gray-500">Pre-pregnancy Weight</dt>
                     <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
                       {formatWeight(convertWeight(profile.pre_pregnancy_weight, 'kg', weightUnit), weightUnit)}
-                    </dd>
-                  </div>
-                  <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                    <dt className="text-sm font-medium text-gray-500">Recovery Progress</dt>
-                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                      {Math.floor((Date.now() - new Date(profile.delivery_date).getTime()) / (1000 * 60 * 60 * 24))} days
                     </dd>
                   </div>
                 </dl>
