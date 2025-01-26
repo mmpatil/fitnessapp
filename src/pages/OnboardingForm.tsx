@@ -19,23 +19,52 @@ export default function OnboardingForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { error: profileError } = await supabase
+      // First check if profile already exists
+      const { data: existingProfile } = await supabase
         .from('profiles')
-        .insert([
-          {
-            id: user?.id,
+        .select('id')
+        .eq('id', user?.id)
+        .single();
+
+      let profileError;
+      
+      if (existingProfile) {
+        // If profile exists, update it
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({
             first_name: formData.firstName.trim(),
             last_name: formData.lastName.trim(),
             username: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
             delivery_type: formData.deliveryType,
             delivery_date: formData.deliveryDate,
             pre_pregnancy_weight: parseFloat(formData.prePregnancyWeight),
-          },
-        ]);
+          })
+          .eq('id', user?.id);
+        profileError = updateError;
+      } else {
+        // If profile doesn't exist, insert it
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert([
+            {
+              id: user?.id,
+              first_name: formData.firstName.trim(),
+              last_name: formData.lastName.trim(),
+              username: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
+              delivery_type: formData.deliveryType,
+              delivery_date: formData.deliveryDate,
+              pre_pregnancy_weight: parseFloat(formData.prePregnancyWeight),
+              weight_unit: 'kg', // Add default weight unit
+            },
+          ]);
+        profileError = insertError;
+      }
 
       if (profileError) throw profileError;
       navigate('/');
     } catch (err) {
+      console.error('Error saving profile:', err);
       setError('Failed to save profile information');
     }
   };
