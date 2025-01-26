@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Activity, Weight, Ruler, Calendar } from 'lucide-react';
+import { Activity, Weight, Ruler, Calendar, SmilePlus, Smile, Meh, Frown, AlertCircle, Battery, BatteryWarning, BatteryLow, BatteryMedium, BatteryFull } from 'lucide-react';
 import { format } from 'date-fns';
 import { convertWeight, formatWeight, convertLength, formatLength } from '../lib/units';
 import {
@@ -83,6 +83,16 @@ interface SupplementLog {
   taken_at: string;
 }
 
+// Add MoodLog interface with the existing interfaces
+interface MoodLog {
+  id: string;
+  date: string;
+  mood_rating: number;
+  energy_level: number;
+  journal_entry: string;
+  gratitude_notes: string;
+}
+
 export default function Dashboard() {
   // Previous state declarations remain the same
   const { user, signOut } = useAuth();
@@ -112,7 +122,14 @@ export default function Dashboard() {
     frequency: 'daily',
     time_of_day: 'morning'
   });
-  const [activeTab, setActiveTab] = useState<'measurements' | 'progress' | 'exercises' | 'profile' | 'supplements'>('measurements');
+  const [activeTab, setActiveTab] = useState<'measurements' | 'progress' | 'exercises' | 'profile' | 'supplements' | 'mood'>('measurements');
+
+  // Add new state for mood tracking
+  const [moodRating, setMoodRating] = useState(3);
+  const [energyLevel, setEnergyLevel] = useState(3);
+  const [journalEntry, setJournalEntry] = useState('');
+  const [gratitudeNotes, setGratitudeNotes] = useState('');
+  const [todayLog, setTodayLog] = useState<MoodLog | null>(null);
 
   // Function to calculate postpartum week
   const calculatePostpartumWeek = (deliveryDate: string): number => {
@@ -586,6 +603,134 @@ export default function Dashboard() {
     },
   };
 
+  // Add new handlers for mood tracking
+  const fetchTodayLog = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('mood_logs')
+        .select('*')
+        .eq('user_id', user?.id)
+        .eq('date', today)
+        .single();
+
+      if (error) throw error;
+      
+      if (data) {
+        setTodayLog(data);
+        setMoodRating(data.mood_rating);
+        setEnergyLevel(data.energy_level);
+        setJournalEntry(data.journal_entry || '');
+        setGratitudeNotes(data.gratitude_notes || '');
+      }
+    } catch (err) {
+      console.error('Error fetching mood log:', err);
+    }
+  };
+
+  const handleMoodSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const moodData = {
+        user_id: user?.id,
+        date: today,
+        mood_rating: moodRating,
+        energy_level: energyLevel,
+        journal_entry: journalEntry,
+        gratitude_notes: gratitudeNotes
+      };
+
+      let response;
+      if (todayLog) {
+        response = await supabase
+          .from('mood_logs')
+          .update(moodData)
+          .eq('id', todayLog.id);
+      } else {
+        response = await supabase
+          .from('mood_logs')
+          .insert([moodData]);
+      }
+
+      if (response.error) throw response.error;
+      
+      await fetchTodayLog();
+    } catch (err) {
+      console.error('Error saving mood log:', err);
+    }
+  };
+
+  // Add these helper functions before the return statement
+  const getMoodIcon = (rating: number) => {
+    switch (rating) {
+      case 1:
+        return <AlertCircle className="w-6 h-6" />; // Changed to AlertCircle for very unhappy
+      case 2:
+        return <Frown className="w-6 h-6" />;
+      case 3:
+        return <Meh className="w-6 h-6" />;
+      case 4:
+        return <Smile className="w-6 h-6" />;
+      case 5:
+        return <SmilePlus className="w-6 h-6" />;
+      default:
+        return <Meh className="w-6 h-6" />;
+    }
+  };
+
+  const getMoodLabel = (rating: number) => {
+    switch (rating) {
+      case 1:
+        return "Very Unhappy";
+      case 2:
+        return "Unhappy";
+      case 3:
+        return "Neutral";
+      case 4:
+        return "Happy";
+      case 5:
+        return "Very Happy";
+      default:
+        return "Unknown";
+    }
+  };
+
+  const getEnergyIcon = (level: number) => {
+    switch (level) {
+      case 1:
+        return <Battery className="w-6 h-6" />;
+      case 2:
+        return <BatteryWarning className="w-6 h-6" />;
+      case 3:
+        return <BatteryLow className="w-6 h-6" />;
+      case 4:
+        return <BatteryMedium className="w-6 h-6" />;
+      case 5:
+        return <BatteryFull className="w-6 h-6" />;
+      default:
+        return <Battery className="w-6 h-6" />;
+    }
+  };
+
+  const getEnergyLabel = (level: number) => {
+    switch (level) {
+      case 1:
+        return "Very Low";
+      case 2:
+        return "Low";
+      case 3:
+        return "Moderate";
+      case 4:
+        return "High";
+      case 5:
+        return "Very High";
+      default:
+        return "Unknown";
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -659,7 +804,7 @@ export default function Dashboard() {
             >
               Exercises
             </button>
-              <button
+            <button
               onClick={() => setActiveTab('supplements')}
               className={`inline-flex items-center px-4 py-2 border text-sm font-medium rounded-md ${
                 activeTab === 'supplements'
@@ -668,6 +813,16 @@ export default function Dashboard() {
               } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
             >
               Supplements
+            </button>
+            <button
+              onClick={() => setActiveTab('mood')}
+              className={`inline-flex items-center px-4 py-2 border text-sm font-medium rounded-md ${
+                activeTab === 'mood'
+                  ? 'border-transparent text-white bg-indigo-600 hover:bg-indigo-700'
+                  : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
+            >
+              Mood
             </button>
             <button
               onClick={() => setActiveTab('profile')}
@@ -1285,6 +1440,108 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        ) : activeTab === 'mood' ? (
+          <div className="mt-8">
+            <div className="bg-white shadow rounded-lg p-6">
+              <h2 className="text-lg font-medium mb-6">
+                {format(new Date(), "EEEE, MMMM do, yyyy")}
+              </h2>
+
+              <form onSubmit={handleMoodSubmit} className="space-y-6">
+                {/* Mood Rating */}
+                <div className="mb-12">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    How are you feeling today?
+                  </label>
+                  <div className="flex items-center space-x-4">
+                    {[1, 2, 3, 4, 5].map((rating) => (
+                      <button
+                        key={rating}
+                        type="button"
+                        onClick={() => setMoodRating(rating)}
+                        className={`p-3 rounded-full ${
+                          moodRating === rating
+                            ? 'bg-indigo-100 text-indigo-600'
+                            : 'bg-gray-100 text-gray-600'
+                        } hover:bg-indigo-50 transition-colors group relative`}
+                      >
+                        {getMoodIcon(rating)}
+                        <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-gray-500 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+                          {getMoodLabel(rating)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Energy Level */}
+                <div className="mb-12">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Energy Level
+                  </label>
+                  <div className="flex items-center space-x-4 mb-8">
+                    {[1, 2, 3, 4, 5].map((level) => (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => setEnergyLevel(level)}
+                        className={`p-3 rounded-full ${
+                          energyLevel === level
+                            ? 'bg-indigo-100 text-indigo-600'
+                            : 'bg-gray-100 text-gray-600'
+                        } hover:bg-indigo-50 transition-colors group relative`}
+                      >
+                        {getEnergyIcon(level)}
+                        <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-gray-500 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+                          {getEnergyLabel(level)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Journal Entry */}
+                <div>
+                  <label htmlFor="journal" className="block text-sm font-medium text-gray-700 mb-2">
+                    Journal Entry
+                  </label>
+                  <textarea
+                    id="journal"
+                    rows={4}
+                    className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                    placeholder="How are you feeling today? What's on your mind?"
+                    value={journalEntry}
+                    onChange={(e) => setJournalEntry(e.target.value)}
+                  />
+                </div>
+
+                {/* Gratitude Notes */}
+                <div>
+                  <label htmlFor="gratitude" className="block text-sm font-medium text-gray-700 mb-2">
+                    Gratitude Journal
+                  </label>
+                  <textarea
+                    id="gratitude"
+                    rows={3}
+                    className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                    placeholder="What are you grateful for today?"
+                    value={gratitudeNotes}
+                    onChange={(e) => setGratitudeNotes(e.target.value)}
+                  />
+                </div>
+
+                {/* Submit Button */}
+                <div>
+                  <button
+                    type="submit"
+                    className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    {todayLog ? 'Update Entry' : 'Save Entry'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         ) : (
